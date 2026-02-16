@@ -1,9 +1,11 @@
 ﻿package com.example.campuswalktracker
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Location
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
@@ -38,10 +40,19 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_HOME_LNG = "home_lng"
         private const val KEY_UNIVERSITY_LAT = "university_lat"
         private const val KEY_UNIVERSITY_LNG = "university_lng"
+
         private const val KEY_AUTO_ENABLED = "auto_enabled"
         private const val KEY_LAST_KNOWN_ZONE = "last_known_zone"
+        private const val KEY_LAST_OBSERVED_ZONE = "last_observed_zone"
         private const val KEY_LAST_AUTO_RECORD_TIME_MS = "last_auto_record_time_ms"
         private const val KEY_LAST_LOCATION_TIME_MS = "last_location_time_ms"
+
+        private const val KEY_LAST_SAMPLE_LAT = "last_sample_lat"
+        private const val KEY_LAST_SAMPLE_LNG = "last_sample_lng"
+        private const val KEY_LAST_SAMPLE_TIME_MS = "last_sample_time_ms"
+        private const val KEY_JOURNEY_MAX_SPEED_MPS = "journey_max_speed_mps"
+        private const val KEY_JOURNEY_MOVING_SAMPLE_COUNT = "journey_moving_sample_count"
+        private const val KEY_JOURNEY_HIGH_SPEED_SAMPLE_COUNT = "journey_high_speed_sample_count"
 
         private const val ZONE_HOME = "home"
         private const val ZONE_UNIVERSITY = "university"
@@ -54,10 +65,20 @@ class MainActivity : AppCompatActivity() {
         private const val LOCATION_UPDATE_INTERVAL_MS = 60_000L
         private const val LOCATION_MIN_UPDATE_INTERVAL_MS = 30_000L
 
+        private const val WALKING_MAX_SPEED_MPS = 3.2f
+        private const val MOVING_MIN_SPEED_MPS = 0.5f
+        private const val MIN_MOVING_SAMPLE_COUNT = 2
+        private const val NON_WALKING_SPEED_SAMPLE_THRESHOLD = 2
+
         private val DAILY_RECORD_KEY_REGEX =
             Regex("""\d{4}-\d{2}-\d{2}_(home_to_uni|uni_to_home)(_(manual|auto))?""")
         private val TOTAL_RECORD_KEY_REGEX =
             Regex("""total_(home_to_uni|uni_to_home)(_(manual|auto))?""")
+    }
+
+    private enum class PermissionRequestReason {
+        AUTO_TRACKING,
+        LOCATION_ACTION
     }
 
     private lateinit var prefs: SharedPreferences
@@ -71,25 +92,47 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var locationClient: com.google.android.gms.location.FusedLocationProviderClient
     private var locationCallback: LocationCallback? = null
+
     private var pendingPermissionAction: (() -> Unit)? = null
+    private var pendingPermissionReason: PermissionRequestReason? = null
+    private var pendingBackgroundPermissionAction: (() -> Unit)? = null
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         val action = pendingPermissionAction
+        val reason = pendingPermissionReason
         pendingPermissionAction = null
+        pendingPermissionReason = null
 
         if (granted) {
-            action?.invoke()
-        } else {
-            if (::prefs.isInitialized) {
-                prefs.edit().putBoolean(KEY_AUTO_ENABLED, false).apply()
+            if (reason == PermissionRequestReason.AUTO_TRACKING) {
+                ensureBackgroundLocationPermissionIfNeeded {
+                    action?.invoke()
+                }
+            } else {
+                action?.invoke()
             }
-            if (::autoTrackingSwitch.isInitialized) {
-                autoTrackingSwitch.isChecked = false
+        } else {
+            if (reason == PermissionRequestReason.AUTO_TRACKING) {
+                disableAutoTracking()
             }
             showToast(getString(R.string.location_permission_required))
             refreshAutoStatus()
+        }
+    }
+
+    private val backgroundLocationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val action = pendingBackgroundPermissionAction
+        pendingBackgroundPermissionAction = null
+
+        if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            action?.invoke()
+        } else {
+            showToast(getString(R.string.background_location_permission_limited))
+            action?.invoke()
         }
     }
 
@@ -124,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.setHomeButton).setOnClickListener {
-            withLocationPermission {
+            withLocationPermission(PermissionRequestReason.LOCATION_ACTION) {
                 requestCurrentLocation { location ->
                     savePoint(KEY_HOME_LAT, KEY_HOME_LNG, location)
                     refreshLocationLabels()
@@ -135,7 +178,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.setUniversityButton).setOnClickListener {
-            withLocationPermission {
+            withLocationPermission(PermissionRequestReason.LOCATION_ACTION) {
                 requestCurrentLocation { location ->
                     savePoint(KEY_UNIVERSITY_LAT, KEY_UNIVERSITY_LNG, location)
                     refreshLocationLabels()
@@ -146,7 +189,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.detectNowButton).setOnClickListener {
-            withLocationPermission {
+            withLocationPermission(PermissionRequestReason.LOCATION_ACTION) {
                 requestCurrentLocation { location ->
                     handleLocation(location, manualCheck = true)
                 }
@@ -168,13 +211,12 @@ class MainActivity : AppCompatActivity() {
 
         if (prefs.getBoolean(KEY_AUTO_ENABLED, false)) {
             if (!hasHomeAndUniversity()) {
-                prefs.edit().putBoolean(KEY_AUTO_ENABLED, false).apply()
-                autoTrackingSwitch.isChecked = false
+                disableAutoTracking()
                 refreshAutoStatus()
                 return
             }
 
-            withLocationPermission {
+            withLocationPermission(PermissionRequestReason.AUTO_TRACKING) {
                 startLocationTracking()
                 requestCurrentLocation { location ->
                     handleLocation(location, manualCheck = false)
@@ -185,7 +227,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+    }
+
+    override fun onDestroy() {
         stopLocationTracking()
+        super.onDestroy()
     }
 
     private fun onAutoTrackingToggled(isChecked: Boolean) {
@@ -197,20 +243,29 @@ class MainActivity : AppCompatActivity() {
             }
 
             prefs.edit().putBoolean(KEY_AUTO_ENABLED, true).apply()
-            withLocationPermission {
+
+            withLocationPermission(PermissionRequestReason.AUTO_TRACKING) {
                 startLocationTracking()
                 requestCurrentLocation { location ->
                     handleLocation(location, manualCheck = false)
                 }
             }
         } else {
-            prefs.edit().putBoolean(KEY_AUTO_ENABLED, false).apply()
-            stopLocationTracking()
+            disableAutoTracking()
         }
 
         refreshAutoStatus()
     }
 
+    private fun disableAutoTracking() {
+        prefs.edit().putBoolean(KEY_AUTO_ENABLED, false).apply()
+        if (::autoTrackingSwitch.isInitialized && autoTrackingSwitch.isChecked) {
+            autoTrackingSwitch.isChecked = false
+        }
+        stopLocationTracking()
+    }
+
+    @SuppressLint("MissingPermission")
     private fun startLocationTracking() {
         if (locationCallback != null || !hasLocationPermission()) {
             return
@@ -235,6 +290,7 @@ class MainActivity : AppCompatActivity() {
             locationClient.requestLocationUpdates(request, callback, mainLooper)
         } catch (_: SecurityException) {
             locationCallback = null
+            disableAutoTracking()
             showToast(getString(R.string.location_permission_required))
         }
     }
@@ -245,6 +301,7 @@ class MainActivity : AppCompatActivity() {
         locationCallback = null
     }
 
+    @SuppressLint("MissingPermission")
     private fun requestCurrentLocation(onLocation: (Location) -> Unit) {
         if (!hasLocationPermission()) {
             showToast(getString(R.string.location_permission_required))
@@ -252,35 +309,41 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tokenSource = CancellationTokenSource()
-        locationClient.getCurrentLocation(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            tokenSource.token
-        ).addOnSuccessListener { location ->
-            if (location != null) {
-                onLocation(location)
-            } else {
-                showToast(getString(R.string.location_not_available))
+
+        try {
+            locationClient.getCurrentLocation(
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                tokenSource.token
+            ).addOnSuccessListener { location ->
+                if (location != null) {
+                    onLocation(location)
+                } else {
+                    showToast(getString(R.string.location_not_available))
+                }
+            }.addOnFailureListener {
+                showToast(getString(R.string.location_error))
             }
-        }.addOnFailureListener {
-            showToast(getString(R.string.location_error))
+        } catch (_: SecurityException) {
+            showToast(getString(R.string.location_permission_required))
         }
     }
 
     private fun handleLocation(location: Location, manualCheck: Boolean) {
-        val previousZone = prefs.getString(KEY_LAST_KNOWN_ZONE, ZONE_UNKNOWN) ?: ZONE_UNKNOWN
+        val previousKnownZone = prefs.getString(KEY_LAST_KNOWN_ZONE, ZONE_UNKNOWN) ?: ZONE_UNKNOWN
         val currentZone = detectCurrentZone(location)
         val autoEnabled = prefs.getBoolean(KEY_AUTO_ENABLED, false)
 
-        if (autoEnabled && previousZone != currentZone) {
+        updateJourneySpeed(location)
+        updateObservedZone(currentZone)
+
+        if (autoEnabled && previousKnownZone != currentZone) {
             when {
-                previousZone == ZONE_HOME && currentZone == ZONE_UNIVERSITY && canRecordAutoTransition() -> {
-                    incrementCount(TRIP_HOME_TO_UNIVERSITY, SOURCE_AUTO)
-                    showToast(getString(R.string.auto_recorded_home_to_uni))
+                previousKnownZone == ZONE_HOME && currentZone == ZONE_UNIVERSITY -> {
+                    processAutoTrip(TRIP_HOME_TO_UNIVERSITY, R.string.auto_recorded_home_to_uni)
                 }
 
-                previousZone == ZONE_UNIVERSITY && currentZone == ZONE_HOME && canRecordAutoTransition() -> {
-                    incrementCount(TRIP_UNIVERSITY_TO_HOME, SOURCE_AUTO)
-                    showToast(getString(R.string.auto_recorded_uni_to_home))
+                previousKnownZone == ZONE_UNIVERSITY && currentZone == ZONE_HOME -> {
+                    processAutoTrip(TRIP_UNIVERSITY_TO_HOME, R.string.auto_recorded_uni_to_home)
                 }
             }
         }
@@ -297,15 +360,130 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun processAutoTrip(type: String, successMessageRes: Int) {
+        if (!canRecordAutoTransition()) {
+            return
+        }
+
+        if (!isLikelyWalkingJourney()) {
+            showToast(getString(R.string.auto_skipped_not_walking))
+            resetJourneyTracking()
+            return
+        }
+
+        incrementCount(type, SOURCE_AUTO)
+        markAutoTransitionRecorded()
+        showToast(getString(successMessageRes))
+        resetJourneyTracking()
+    }
+
+    private fun updateObservedZone(currentZone: String) {
+        val lastObservedZone = prefs.getString(KEY_LAST_OBSERVED_ZONE, ZONE_UNKNOWN) ?: ZONE_UNKNOWN
+
+        if (lastObservedZone != currentZone) {
+            if (lastObservedZone != ZONE_UNKNOWN && currentZone == ZONE_UNKNOWN) {
+                resetJourneyTracking()
+            }
+            prefs.edit().putString(KEY_LAST_OBSERVED_ZONE, currentZone).apply()
+        }
+    }
+
     private fun canRecordAutoTransition(): Boolean {
         val now = System.currentTimeMillis()
         val lastRecorded = prefs.getLong(KEY_LAST_AUTO_RECORD_TIME_MS, 0L)
-        if (now - lastRecorded < AUTO_RECORD_COOLDOWN_MS) {
-            return false
+        return now - lastRecorded >= AUTO_RECORD_COOLDOWN_MS
+    }
+
+    private fun markAutoTransitionRecorded() {
+        prefs.edit().putLong(KEY_LAST_AUTO_RECORD_TIME_MS, System.currentTimeMillis()).apply()
+    }
+
+    private fun isLikelyWalkingJourney(): Boolean {
+        val movingSampleCount = prefs.getInt(KEY_JOURNEY_MOVING_SAMPLE_COUNT, 0)
+        val highSpeedSampleCount = prefs.getInt(KEY_JOURNEY_HIGH_SPEED_SAMPLE_COUNT, 0)
+
+        return movingSampleCount >= MIN_MOVING_SAMPLE_COUNT &&
+            highSpeedSampleCount < NON_WALKING_SPEED_SAMPLE_THRESHOLD
+    }
+
+    private fun updateJourneySpeed(location: Location) {
+        val sampleSpeed = estimateCurrentSpeed(location)
+        if (sampleSpeed != null && sampleSpeed.isFinite() && sampleSpeed >= 0f) {
+            val editor = prefs.edit()
+
+            val currentMax = prefs.getFloat(KEY_JOURNEY_MAX_SPEED_MPS, 0f)
+            if (sampleSpeed > currentMax) {
+                editor.putFloat(KEY_JOURNEY_MAX_SPEED_MPS, sampleSpeed)
+            }
+
+            if (sampleSpeed >= MOVING_MIN_SPEED_MPS) {
+                val movingCount = prefs.getInt(KEY_JOURNEY_MOVING_SAMPLE_COUNT, 0) + 1
+                editor.putInt(KEY_JOURNEY_MOVING_SAMPLE_COUNT, movingCount)
+            }
+
+            if (sampleSpeed > WALKING_MAX_SPEED_MPS) {
+                val highSpeedCount = prefs.getInt(KEY_JOURNEY_HIGH_SPEED_SAMPLE_COUNT, 0) + 1
+                editor.putInt(KEY_JOURNEY_HIGH_SPEED_SAMPLE_COUNT, highSpeedCount)
+            }
+
+            editor.apply()
         }
 
-        prefs.edit().putLong(KEY_LAST_AUTO_RECORD_TIME_MS, now).apply()
-        return true
+        val now = System.currentTimeMillis()
+        prefs.edit()
+            .putString(KEY_LAST_SAMPLE_LAT, location.latitude.toString())
+            .putString(KEY_LAST_SAMPLE_LNG, location.longitude.toString())
+            .putLong(KEY_LAST_SAMPLE_TIME_MS, now)
+            .apply()
+    }
+
+    private fun estimateCurrentSpeed(location: Location): Float? {
+        if (location.hasSpeed()) {
+            val speed = location.speed
+            if (speed.isFinite() && speed >= 0f) {
+                return speed
+            }
+        }
+
+        val previousPoint = getSavedPoint(KEY_LAST_SAMPLE_LAT, KEY_LAST_SAMPLE_LNG) ?: return null
+        val previousTime = prefs.getLong(KEY_LAST_SAMPLE_TIME_MS, 0L)
+        if (previousTime <= 0L) {
+            return null
+        }
+
+        val now = System.currentTimeMillis()
+        val deltaMs = now - previousTime
+        if (deltaMs <= 0L) {
+            return null
+        }
+
+        val result = FloatArray(1)
+        Location.distanceBetween(
+            previousPoint.first,
+            previousPoint.second,
+            location.latitude,
+            location.longitude,
+            result
+        )
+
+        val seconds = deltaMs / 1000f
+        if (seconds <= 0f) {
+            return null
+        }
+
+        val speed = result[0] / seconds
+        return if (speed.isFinite() && speed >= 0f) speed else null
+    }
+
+    private fun resetJourneyTracking() {
+        prefs.edit()
+            .remove(KEY_LAST_SAMPLE_LAT)
+            .remove(KEY_LAST_SAMPLE_LNG)
+            .remove(KEY_LAST_SAMPLE_TIME_MS)
+            .putFloat(KEY_JOURNEY_MAX_SPEED_MPS, 0f)
+            .putInt(KEY_JOURNEY_MOVING_SAMPLE_COUNT, 0)
+            .putInt(KEY_JOURNEY_HIGH_SPEED_SAMPLE_COUNT, 0)
+            .apply()
     }
 
     private fun detectCurrentZone(location: Location): String {
@@ -460,8 +638,10 @@ class MainActivity : AppCompatActivity() {
         editor.remove(KEY_LAST_AUTO_RECORD_TIME_MS)
             .remove(KEY_LAST_LOCATION_TIME_MS)
             .putString(KEY_LAST_KNOWN_ZONE, ZONE_UNKNOWN)
+            .putString(KEY_LAST_OBSERVED_ZONE, ZONE_UNKNOWN)
             .apply()
 
+        resetJourneyTracking()
         refreshSummary()
         refreshAutoStatus()
         showToast(getString(R.string.reset_all_done))
@@ -526,20 +706,49 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun withLocationPermission(action: () -> Unit) {
+    private fun withLocationPermission(
+        reason: PermissionRequestReason,
+        action: () -> Unit
+    ) {
         if (hasLocationPermission()) {
-            action()
+            if (reason == PermissionRequestReason.AUTO_TRACKING) {
+                ensureBackgroundLocationPermissionIfNeeded(action)
+            } else {
+                action()
+            }
             return
         }
 
         pendingPermissionAction = action
+        pendingPermissionReason = reason
         locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    private fun ensureBackgroundLocationPermissionIfNeeded(action: () -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || hasBackgroundLocationPermission()) {
+            action()
+            return
+        }
+
+        pendingBackgroundPermissionAction = action
+        backgroundLocationPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
     }
 
     private fun hasLocationPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun hasBackgroundLocationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return true
+        }
+
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
     }
 
