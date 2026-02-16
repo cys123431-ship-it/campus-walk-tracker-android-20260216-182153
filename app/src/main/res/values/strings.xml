@@ -1,0 +1,37 @@
+﻿<resources>
+    <string name="app_name">Campus Walk Tracker</string>
+    <string name="app_main_title">도보 통학 카운터</string>
+    <string name="home_to_uni_button">집 → 대학 (+1)</string>
+    <string name="uni_to_home_button">대학 → 집 (+1)</string>
+    <string name="reset_today_button">오늘 기록 초기화</string>
+
+    <string name="auto_section_title">위치 기반 자동 기록 (앱 실행 중)</string>
+    <string name="auto_tracking_switch">자동 기록 사용</string>
+    <string name="set_home_button">현재 위치를 집으로 저장</string>
+    <string name="set_university_button">현재 위치를 대학으로 저장</string>
+    <string name="detect_now_button">현재 위치 수동 확인</string>
+
+    <string name="today_summary_format">오늘(%1$s)\n집→대학: %2$d회 (수동 %3$d / 자동 %4$d)\n대학→집: %5$d회 (수동 %6$d / 자동 %7$d)\n합계: %8$d회</string>
+    <string name="total_summary_format">누적\n집→대학: %1$d회 (수동 %2$d / 자동 %3$d)\n대학→집: %4$d회 (수동 %5$d / 자동 %6$d)\n합계: %7$d회</string>
+
+    <string name="auto_status_format">자동 기록: %1$s\n마지막 인식 구역: %2$s\n판정 반경: %3$dm, 중복 방지: %4$d분</string>
+    <string name="auto_on">ON</string>
+    <string name="auto_off">OFF</string>
+    <string name="zone_home">집</string>
+    <string name="zone_university">대학</string>
+    <string name="zone_unknown">미인식</string>
+
+    <string name="home_location_format">집 좌표: %1$s</string>
+    <string name="university_location_format">대학 좌표: %1$s</string>
+    <string name="location_not_set">미설정</string>
+
+    <string name="location_permission_required">위치 권한이 필요합니다.</string>
+    <string name="location_not_available">현재 위치를 가져오지 못했습니다. 실외에서 다시 시도하세요.</string>
+    <string name="location_error">위치 조회 중 오류가 발생했습니다.</string>
+    <string name="need_home_and_university_first">집/대학 위치를 먼저 저장해주세요.</string>
+    <string name="saved_home_location">집 위치를 저장했습니다.</string>
+    <string name="saved_university_location">대학 위치를 저장했습니다.</string>
+    <string name="auto_recorded_home_to_uni">자동 기록: 집 → 대학 1회 추가</string>
+    <string name="auto_recorded_uni_to_home">자동 기록: 대학 → 집 1회 추가</string>
+    <string name="current_location_checked">현재 위치 확인 완료</string>
+</resources>

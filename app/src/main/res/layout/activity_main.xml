@@ -1,0 +1,134 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F7FAFC">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="@string/app_main_title"
+            android:textColor="#0F172A"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/todaySummaryText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:background="#E2E8F0"
+            android:padding="12dp"
+            android:textColor="#1E293B"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/totalSummaryText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:background="#E2E8F0"
+            android:padding="12dp"
+            android:textColor="#1E293B"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/homeToUniButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/home_to_uni_button" />
+
+        <Button
+            android:id="@+id/uniToHomeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="@string/uni_to_home_button" />
+
+        <Button
+            android:id="@+id/resetTodayButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="@string/reset_today_button" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginBottom="16dp"
+            android:background="#CBD5E1" />
+
+        <TextView
+            android:id="@+id/autoSectionTitleText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="@string/auto_section_title"
+            android:textColor="#0F172A"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/autoTrackingSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:text="@string/auto_tracking_switch" />
+
+        <TextView
+            android:id="@+id/autoStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:background="#E2E8F0"
+            android:padding="12dp"
+            android:textColor="#1E293B"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/homeLocationText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:textColor="#334155"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/universityLocationText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColor="#334155"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/setHomeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="@string/set_home_button" />
+
+        <Button
+            android:id="@+id/setUniversityButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:text="@string/set_university_button" />
+
+        <Button
+            android:id="@+id/detectNowButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/detect_now_button" />
+
+    </LinearLayout>
+</ScrollView>
