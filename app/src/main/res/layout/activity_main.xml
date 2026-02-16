@@ -58,8 +58,15 @@
             android:id="@+id/resetTodayButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="20dp"
+            android:layout_marginBottom="8dp"
             android:text="@string/reset_today_button" />
+
+        <Button
+            android:id="@+id/resetAllButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="@string/reset_all_button" />
 
         <View
             android:layout_width="match_parent"

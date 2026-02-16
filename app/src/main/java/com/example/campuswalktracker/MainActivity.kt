@@ -9,6 +9,7 @@ import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
@@ -52,6 +53,11 @@ class MainActivity : AppCompatActivity() {
 
         private const val LOCATION_UPDATE_INTERVAL_MS = 60_000L
         private const val LOCATION_MIN_UPDATE_INTERVAL_MS = 30_000L
+
+        private val DAILY_RECORD_KEY_REGEX =
+            Regex("""\d{4}-\d{2}-\d{2}_(home_to_uni|uni_to_home)(_(manual|auto))?""")
+        private val TOTAL_RECORD_KEY_REGEX =
+            Regex("""total_(home_to_uni|uni_to_home)(_(manual|auto))?""")
     }
 
     private lateinit var prefs: SharedPreferences
@@ -111,6 +117,10 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.resetTodayButton).setOnClickListener {
             resetToday()
+        }
+
+        findViewById<Button>(R.id.resetAllButton).setOnClickListener {
+            confirmResetAllRecords()
         }
 
         findViewById<Button>(R.id.setHomeButton).setOnClickListener {
@@ -428,6 +438,37 @@ class MainActivity : AppCompatActivity() {
             .remove("${today}_${TRIP_UNIVERSITY_TO_HOME}_$SOURCE_AUTO")
             .apply()
         refreshSummary()
+    }
+
+    private fun confirmResetAllRecords() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.reset_all_confirm_title))
+            .setMessage(getString(R.string.reset_all_confirm_message))
+            .setPositiveButton(getString(R.string.reset_confirm_positive)) { _, _ ->
+                resetAllRecords()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun resetAllRecords() {
+        val keysToRemove = prefs.all.keys.filter(::isRecordKey)
+        val editor = prefs.edit()
+
+        keysToRemove.forEach(editor::remove)
+
+        editor.remove(KEY_LAST_AUTO_RECORD_TIME_MS)
+            .remove(KEY_LAST_LOCATION_TIME_MS)
+            .putString(KEY_LAST_KNOWN_ZONE, ZONE_UNKNOWN)
+            .apply()
+
+        refreshSummary()
+        refreshAutoStatus()
+        showToast(getString(R.string.reset_all_done))
+    }
+
+    private fun isRecordKey(key: String): Boolean {
+        return DAILY_RECORD_KEY_REGEX.matches(key) || TOTAL_RECORD_KEY_REGEX.matches(key)
     }
 
     private fun refreshSummary() {
