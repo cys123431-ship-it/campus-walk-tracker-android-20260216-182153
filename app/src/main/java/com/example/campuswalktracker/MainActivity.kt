@@ -46,6 +46,14 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_LAST_OBSERVED_ZONE = "last_observed_zone"
         private const val KEY_LAST_AUTO_RECORD_TIME_MS = "last_auto_record_time_ms"
         private const val KEY_LAST_LOCATION_TIME_MS = "last_location_time_ms"
+        private const val KEY_JOURNEY_ORIGIN_ZONE = "journey_origin_zone"
+        private const val KEY_ARRIVAL_CANDIDATE_ZONE = "arrival_candidate_zone"
+        private const val KEY_ARRIVAL_CANDIDATE_START_MS = "arrival_candidate_start_ms"
+        private const val KEY_ARRIVAL_CANDIDATE_SAMPLE_COUNT = "arrival_candidate_sample_count"
+        private const val KEY_LAST_AUTO_RECORD_ID = "last_auto_record_id"
+        private const val KEY_LAST_AUTO_RECORD_DATE = "last_auto_record_date"
+        private const val KEY_LAST_AUTO_RECORD_TYPE = "last_auto_record_type"
+        private const val KEY_LAST_AUTO_RECORD_UNDONE = "last_auto_record_undone"
 
         private const val KEY_LAST_SAMPLE_LAT = "last_sample_lat"
         private const val KEY_LAST_SAMPLE_LNG = "last_sample_lng"
@@ -58,8 +66,8 @@ class MainActivity : AppCompatActivity() {
         private const val ZONE_UNIVERSITY = "university"
         private const val ZONE_UNKNOWN = "unknown"
 
-        private const val ZONE_RADIUS_METERS = 200f
-        private const val AUTO_RECORD_COOLDOWN_MINUTES = 30
+        private const val ZONE_RADIUS_METERS = 150f
+        private const val AUTO_RECORD_COOLDOWN_MINUTES = 5
         private const val AUTO_RECORD_COOLDOWN_MS = AUTO_RECORD_COOLDOWN_MINUTES * 60 * 1000L
 
         private const val LOCATION_UPDATE_INTERVAL_MS = 60_000L
@@ -136,12 +144,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         locationClient = LocationServices.getFusedLocationProviderClient(this)
+        ensureNotificationPermissionIfNeeded()
 
         todaySummaryText = findViewById(R.id.todaySummaryText)
         totalSummaryText = findViewById(R.id.totalSummaryText)
@@ -190,9 +203,7 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.detectNowButton).setOnClickListener {
             withLocationPermission(PermissionRequestReason.LOCATION_ACTION) {
-                requestCurrentLocation { location ->
-                    handleLocation(location, manualCheck = true)
-                }
+                startTrackingService(WalkTrackingService.ACTION_CHECK_NOW)
             }
         }
 
@@ -209,6 +220,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
+        val autoEnabled = prefs.getBoolean(KEY_AUTO_ENABLED, false)
+        if (autoTrackingSwitch.isChecked != autoEnabled) {
+            autoTrackingSwitch.isChecked = autoEnabled
+        }
+
         if (prefs.getBoolean(KEY_AUTO_ENABLED, false)) {
             if (!hasHomeAndUniversity()) {
                 disableAutoTracking()
@@ -217,12 +233,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             withLocationPermission(PermissionRequestReason.AUTO_TRACKING) {
-                startLocationTracking()
-                requestCurrentLocation { location ->
-                    handleLocation(location, manualCheck = false)
-                }
+                startTrackingService(WalkTrackingService.ACTION_START)
             }
         }
+
+        refreshSummary()
+        refreshLocationLabels()
+        refreshAutoStatus()
     }
 
     override fun onPause() {
@@ -230,7 +247,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        stopLocationTracking()
         super.onDestroy()
     }
 
@@ -245,10 +261,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean(KEY_AUTO_ENABLED, true).apply()
 
             withLocationPermission(PermissionRequestReason.AUTO_TRACKING) {
-                startLocationTracking()
-                requestCurrentLocation { location ->
-                    handleLocation(location, manualCheck = false)
-                }
+                startTrackingService(WalkTrackingService.ACTION_START)
             }
         } else {
             disableAutoTracking()
@@ -262,7 +275,26 @@ class MainActivity : AppCompatActivity() {
         if (::autoTrackingSwitch.isInitialized && autoTrackingSwitch.isChecked) {
             autoTrackingSwitch.isChecked = false
         }
-        stopLocationTracking()
+        stopTrackingService()
+    }
+
+    private fun startTrackingService(action: String) {
+        val intent = android.content.Intent(this, WalkTrackingService::class.java).apply {
+            this.action = action
+        }
+
+        if (action == WalkTrackingService.ACTION_START) {
+            ContextCompat.startForegroundService(this, intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun stopTrackingService() {
+        val intent = android.content.Intent(this, WalkTrackingService::class.java).apply {
+            action = WalkTrackingService.ACTION_STOP
+        }
+        startService(intent)
     }
 
     @SuppressLint("MissingPermission")
@@ -637,6 +669,14 @@ class MainActivity : AppCompatActivity() {
 
         editor.remove(KEY_LAST_AUTO_RECORD_TIME_MS)
             .remove(KEY_LAST_LOCATION_TIME_MS)
+            .remove(KEY_JOURNEY_ORIGIN_ZONE)
+            .remove(KEY_ARRIVAL_CANDIDATE_ZONE)
+            .remove(KEY_ARRIVAL_CANDIDATE_START_MS)
+            .remove(KEY_ARRIVAL_CANDIDATE_SAMPLE_COUNT)
+            .remove(KEY_LAST_AUTO_RECORD_ID)
+            .remove(KEY_LAST_AUTO_RECORD_DATE)
+            .remove(KEY_LAST_AUTO_RECORD_TYPE)
+            .remove(KEY_LAST_AUTO_RECORD_UNDONE)
             .putString(KEY_LAST_KNOWN_ZONE, ZONE_UNKNOWN)
             .putString(KEY_LAST_OBSERVED_ZONE, ZONE_UNKNOWN)
             .apply()
@@ -732,6 +772,22 @@ class MainActivity : AppCompatActivity() {
 
         pendingBackgroundPermissionAction = action
         backgroundLocationPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    }
+
+    private fun ensureNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun hasLocationPermission(): Boolean {

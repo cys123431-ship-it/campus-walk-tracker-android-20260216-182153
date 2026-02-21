@@ -19,7 +19,7 @@
     <string name="today_summary_format">오늘(%1$s)\n집→대학: %2$d회 (수동 %3$d / 자동 %4$d)\n대학→집: %5$d회 (수동 %6$d / 자동 %7$d)\n합계: %8$d회</string>
     <string name="total_summary_format">누적\n집→대학: %1$d회 (수동 %2$d / 자동 %3$d)\n대학→집: %4$d회 (수동 %5$d / 자동 %6$d)\n합계: %7$d회</string>
 
-    <string name="auto_status_format">자동 기록: %1$s\n마지막 인식 구역: %2$s\n판정 반경: %3$dm, 중복 방지: %4$d분</string>
+    <string name="auto_status_format">자동 기록: %1$s\n마지막 인식 구역: %2$s\n판정 반경: %3$dm, 도착확정: 약 1분, 중복 방지: %4$d분</string>
     <string name="auto_on">ON</string>
     <string name="auto_off">OFF</string>
     <string name="zone_home">집</string>
@@ -40,5 +40,15 @@
     <string name="auto_recorded_home_to_uni">자동 기록: 집 → 대학 1회 추가</string>
     <string name="auto_recorded_uni_to_home">자동 기록: 대학 → 집 1회 추가</string>
     <string name="auto_skipped_not_walking">자동 기록 보류: 걷기 이동으로 판단되지 않았습니다.</string>
+    <string name="auto_record_notification_title">통학 자동 기록</string>
+    <string name="auto_record_undo_action">되돌리기</string>
+    <string name="auto_record_undo_done">최근 자동 기록을 되돌렸습니다.</string>
+
+    <string name="tracking_notification_channel_name">도보 통학 추적</string>
+    <string name="record_notification_channel_name">도보 통학 기록 알림</string>
+    <string name="tracking_notification_title">도보 통학 자동 기록 중</string>
+    <string name="tracking_notification_text">집↔대학 이동을 백그라운드에서 감지합니다.</string>
+    <string name="tracking_notification_stop">추적 중지</string>
+
     <string name="current_location_checked">현재 위치 확인 완료</string>
 </resources>
