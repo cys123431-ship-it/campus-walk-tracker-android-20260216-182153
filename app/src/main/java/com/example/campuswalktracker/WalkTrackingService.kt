@@ -85,8 +85,6 @@ class WalkTrackingService : Service() {
 
         private const val WALKING_MAX_SPEED_MPS = 3.2f
         private const val MOVING_MIN_SPEED_MPS = 0.5f
-        private const val MIN_MOVING_SAMPLE_COUNT = 2
-        private const val NON_WALKING_SPEED_SAMPLE_THRESHOLD = 2
 
         private const val FOREGROUND_CHANNEL_ID = "walk_tracking_foreground"
         private const val RECORD_CHANNEL_ID = "walk_tracking_records"
@@ -256,19 +254,14 @@ class WalkTrackingService : Service() {
     }
 
     private fun processCompletedTrip(event: TripEvent, now: Long) {
-        if (!canRecordAutoTransition()) {
-            return
-        }
+        val resolvedTripType = resolveAutoTripType(
+            event = event,
+            canRecordTransition = canRecordAutoTransition()
+        ) ?: return
 
-        if (!isLikelyWalkingJourney()) {
-            showRecordNotification(getString(R.string.auto_skipped_not_walking), null)
-            return
-        }
-
-        val tripType = when (event) {
-            TripEvent.TRIP_HOME_TO_UNIVERSITY -> TRIP_HOME_TO_UNIVERSITY
-            TripEvent.TRIP_UNIVERSITY_TO_HOME -> TRIP_UNIVERSITY_TO_HOME
-            else -> return
+        val tripType = when (resolvedTripType) {
+            AutoTripType.HOME_TO_UNIVERSITY -> TRIP_HOME_TO_UNIVERSITY
+            AutoTripType.UNIVERSITY_TO_HOME -> TRIP_UNIVERSITY_TO_HOME
         }
 
         incrementCount(tripType, SOURCE_AUTO)
@@ -320,14 +313,6 @@ class WalkTrackingService : Service() {
 
     private fun markAutoTransitionRecorded(now: Long) {
         prefs.edit().putLong(KEY_LAST_AUTO_RECORD_TIME_MS, now).apply()
-    }
-
-    private fun isLikelyWalkingJourney(): Boolean {
-        val movingSampleCount = prefs.getInt(KEY_JOURNEY_MOVING_SAMPLE_COUNT, 0)
-        val highSpeedSampleCount = prefs.getInt(KEY_JOURNEY_HIGH_SPEED_SAMPLE_COUNT, 0)
-
-        return movingSampleCount >= MIN_MOVING_SAMPLE_COUNT &&
-            highSpeedSampleCount < NON_WALKING_SPEED_SAMPLE_THRESHOLD
     }
 
     private fun updateJourneySpeed(location: Location) {
